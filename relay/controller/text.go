@@ -4,6 +4,10 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
+	"strings"
+
 	"github.com/gin-gonic/gin"
 	"github.com/songquanpeng/one-api/common"
 	"github.com/songquanpeng/one-api/common/logger"
@@ -12,9 +16,6 @@ import (
 	"github.com/songquanpeng/one-api/relay/helper"
 	"github.com/songquanpeng/one-api/relay/model"
 	"github.com/songquanpeng/one-api/relay/util"
-	"io"
-	"net/http"
-	"strings"
 )
 
 func RelayTextHelper(c *gin.Context) *model.ErrorWithStatusCode {
@@ -33,18 +34,20 @@ func RelayTextHelper(c *gin.Context) *model.ErrorWithStatusCode {
 	meta.OriginModelName = textRequest.Model
 	textRequest.Model, isModelMapped = util.GetMappedModelName(textRequest.Model, meta.ModelMapping)
 	meta.ActualModelName = textRequest.Model
-	// get model ratio & group ratio
-	modelRatio := common.GetModelRatio(textRequest.Model)
-	groupRatio := common.GetGroupRatio(meta.Group)
-	ratio := modelRatio * groupRatio
-	// pre-consume quota
-	promptTokens := getPromptTokens(textRequest, meta.Mode)
-	meta.PromptTokens = promptTokens
-	preConsumedQuota, bizErr := preConsumeQuota(ctx, textRequest, promptTokens, ratio, meta)
-	if bizErr != nil {
-		logger.Warnf(ctx, "preConsumeQuota failed: %+v", *bizErr)
-		return bizErr
-	}
+
+	// PATCH: 我们不需要计算额度
+	// // get model ratio & group ratio
+	// modelRatio := common.GetModelRatio(textRequest.Model)
+	// groupRatio := common.GetGroupRatio(meta.Group)
+	// ratio := modelRatio * groupRatio
+	// // pre-consume quota
+	// promptTokens := getPromptTokens(textRequest, meta.Mode)
+	// meta.PromptTokens = promptTokens
+	// preConsumedQuota, bizErr := preConsumeQuota(ctx, textRequest, promptTokens, ratio, meta)
+	// if bizErr != nil {
+	// 	logger.Warnf(ctx, "preConsumeQuota failed: %+v", *bizErr)
+	// 	return bizErr
+	// }
 
 	adaptor := helper.GetAdaptor(meta.APIType)
 	if adaptor == nil {
@@ -85,18 +88,18 @@ func RelayTextHelper(c *gin.Context) *model.ErrorWithStatusCode {
 	}
 	meta.IsStream = meta.IsStream || strings.HasPrefix(resp.Header.Get("Content-Type"), "text/event-stream")
 	if resp.StatusCode != http.StatusOK {
-		util.ReturnPreConsumedQuota(ctx, preConsumedQuota, meta.TokenId)
+		// util.ReturnPreConsumedQuota(ctx, preConsumedQuota, meta.TokenId)
 		return util.RelayErrorHandler(resp)
 	}
 
 	// do response
-	usage, respErr := adaptor.DoResponse(c, resp, meta)
+	_, respErr := adaptor.DoResponse(c, resp, meta)
 	if respErr != nil {
 		logger.Errorf(ctx, "respErr is not nil: %+v", respErr)
-		util.ReturnPreConsumedQuota(ctx, preConsumedQuota, meta.TokenId)
+		// util.ReturnPreConsumedQuota(ctx, preConsumedQuota, meta.TokenId)
 		return respErr
 	}
 	// post-consume quota
-	go postConsumeQuota(ctx, usage, meta, textRequest, ratio, preConsumedQuota, modelRatio, groupRatio)
+	// go postConsumeQuota(ctx, usage, meta, textRequest, ratio, preConsumedQuota, modelRatio, groupRatio)
 	return nil
 }

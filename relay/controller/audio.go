@@ -3,15 +3,15 @@ package controller
 import (
 	"bufio"
 	"bytes"
-	"context"
+	// "context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"github.com/gin-gonic/gin"
 	"github.com/songquanpeng/one-api/common"
-	"github.com/songquanpeng/one-api/common/config"
-	"github.com/songquanpeng/one-api/common/logger"
-	"github.com/songquanpeng/one-api/model"
+	// "github.com/songquanpeng/one-api/common/config"
+	// "github.com/songquanpeng/one-api/common/logger"
+	// "github.com/songquanpeng/one-api/model"
 	"github.com/songquanpeng/one-api/relay/channel/openai"
 	"github.com/songquanpeng/one-api/relay/constant"
 	relaymodel "github.com/songquanpeng/one-api/relay/model"
@@ -24,12 +24,12 @@ import (
 func RelayAudioHelper(c *gin.Context, relayMode int) *relaymodel.ErrorWithStatusCode {
 	audioModel := "whisper-1"
 
-	tokenId := c.GetInt("token_id")
+	// tokenId := c.GetInt("token_id")
 	channelType := c.GetInt("channel")
-	channelId := c.GetInt("channel_id")
-	userId := c.GetInt("id")
-	group := c.GetString("group")
-	tokenName := c.GetString("token_name")
+	// channelId := c.GetInt("channel_id")
+	// userId := c.GetInt("id")
+	// group := c.GetString("group")
+	// tokenName := c.GetString("token_name")
 
 	var ttsRequest openai.TextToSpeechRequest
 	if relayMode == constant.RelayModeAudioSpeech {
@@ -46,42 +46,43 @@ func RelayAudioHelper(c *gin.Context, relayMode int) *relaymodel.ErrorWithStatus
 		}
 	}
 
-	modelRatio := common.GetModelRatio(audioModel)
-	groupRatio := common.GetGroupRatio(group)
-	ratio := modelRatio * groupRatio
-	var quota int
-	var preConsumedQuota int
-	switch relayMode {
-	case constant.RelayModeAudioSpeech:
-		preConsumedQuota = int(float64(len(ttsRequest.Input)) * ratio)
-		quota = preConsumedQuota
-	default:
-		preConsumedQuota = int(float64(config.PreConsumedQuota) * ratio)
-	}
-	userQuota, err := model.CacheGetUserQuota(userId)
-	if err != nil {
-		return openai.ErrorWrapper(err, "get_user_quota_failed", http.StatusInternalServerError)
-	}
+	// PATCH: 不需要计算额度
+	// modelRatio := common.GetModelRatio(audioModel)
+	// groupRatio := common.GetGroupRatio(group)
+	// ratio := modelRatio * groupRatio
+	// var quota int
+	// var preConsumedQuota int
+	// switch relayMode {
+	// case constant.RelayModeAudioSpeech:
+	// 	preConsumedQuota = int(float64(len(ttsRequest.Input)) * ratio)
+	// 	quota = preConsumedQuota
+	// default:
+	// 	preConsumedQuota = int(float64(config.PreConsumedQuota) * ratio)
+	// }
+	// userQuota, err := model.CacheGetUserQuota(userId)
+	// if err != nil {
+	// 	return openai.ErrorWrapper(err, "get_user_quota_failed", http.StatusInternalServerError)
+	// }
 
-	// Check if user quota is enough
-	if userQuota-preConsumedQuota < 0 {
-		return openai.ErrorWrapper(errors.New("user quota is not enough"), "insufficient_user_quota", http.StatusForbidden)
-	}
-	err = model.CacheDecreaseUserQuota(userId, preConsumedQuota)
-	if err != nil {
-		return openai.ErrorWrapper(err, "decrease_user_quota_failed", http.StatusInternalServerError)
-	}
-	if userQuota > 100*preConsumedQuota {
-		// in this case, we do not pre-consume quota
-		// because the user has enough quota
-		preConsumedQuota = 0
-	}
-	if preConsumedQuota > 0 {
-		err := model.PreConsumeTokenQuota(tokenId, preConsumedQuota)
-		if err != nil {
-			return openai.ErrorWrapper(err, "pre_consume_token_quota_failed", http.StatusForbidden)
-		}
-	}
+	// // Check if user quota is enough
+	// if userQuota-preConsumedQuota < 0 {
+	// 	return openai.ErrorWrapper(errors.New("user quota is not enough"), "insufficient_user_quota", http.StatusForbidden)
+	// }
+	// err = model.CacheDecreaseUserQuota(userId, preConsumedQuota)
+	// if err != nil {
+	// 	return openai.ErrorWrapper(err, "decrease_user_quota_failed", http.StatusInternalServerError)
+	// }
+	// if userQuota > 100*preConsumedQuota {
+	// 	// in this case, we do not pre-consume quota
+	// 	// because the user has enough quota
+	// 	preConsumedQuota = 0
+	// }
+	// if preConsumedQuota > 0 {
+		// err := model.PreConsumeTokenQuota(tokenId, preConsumedQuota)
+	// 	if err != nil {
+	// 		return openai.ErrorWrapper(err, "pre_consume_token_quota_failed", http.StatusForbidden)
+	// 	}
+	// }
 
 	// map model name
 	modelMapping := c.GetString("model_mapping")
@@ -110,7 +111,7 @@ func RelayAudioHelper(c *gin.Context, relayMode int) *relaymodel.ErrorWithStatus
 	}
 
 	requestBody := &bytes.Buffer{}
-	_, err = io.Copy(requestBody, c.Request.Body)
+	_, err := io.Copy(requestBody, c.Request.Body)
 	if err != nil {
 		return openai.ErrorWrapper(err, "new_request_body_failed", http.StatusInternalServerError)
 	}
@@ -183,28 +184,28 @@ func RelayAudioHelper(c *gin.Context, relayMode int) *relaymodel.ErrorWithStatus
 		if err != nil {
 			return openai.ErrorWrapper(err, "get_text_from_body_err", http.StatusInternalServerError)
 		}
-		quota = openai.CountTokenText(text, audioModel)
+		_ = openai.CountTokenText(text, audioModel)
 		resp.Body = io.NopCloser(bytes.NewBuffer(responseBody))
 	}
 	if resp.StatusCode != http.StatusOK {
-		if preConsumedQuota > 0 {
-			// we need to roll back the pre-consumed quota
-			defer func(ctx context.Context) {
-				go func() {
-					// negative means add quota back for token & user
-					err := model.PostConsumeTokenQuota(tokenId, -preConsumedQuota)
-					if err != nil {
-						logger.Error(ctx, fmt.Sprintf("error rollback pre-consumed quota: %s", err.Error()))
-					}
-				}()
-			}(c.Request.Context())
-		}
+		// if preConsumedQuota > 0 {
+		// 	// we need to roll back the pre-consumed quota
+		// 	defer func(ctx context.Context) {
+		// 		go func() {
+		// 			// negative means add quota back for token & user
+		// 			err := model.PostConsumeTokenQuota(tokenId, -preConsumedQuota)
+		// 			if err != nil {
+		// 				logger.Error(ctx, fmt.Sprintf("error rollback pre-consumed quota: %s", err.Error()))
+		// 			}
+		// 		}()
+		// 	}(c.Request.Context())
+		// }
 		return util.RelayErrorHandler(resp)
 	}
-	quotaDelta := quota - preConsumedQuota
-	defer func(ctx context.Context) {
-		go util.PostConsumeQuota(ctx, tokenId, quotaDelta, quota, userId, channelId, modelRatio, groupRatio, audioModel, tokenName)
-	}(c.Request.Context())
+	// quotaDelta := quota - preConsumedQuota
+	// defer func(ctx context.Context) {
+		// go util.PostConsumeQuota(ctx, tokenId, quotaDelta, quota, userId, channelId, modelRatio, groupRatio, audioModel, tokenName)
+	// }(c.Request.Context())
 
 	for k, v := range resp.Header {
 		c.Writer.Header().Set(k, v[0])
